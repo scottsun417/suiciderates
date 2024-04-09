@@ -1,0 +1,474 @@
+---
+title: "spatmem"
+author: "Zhiyi Sun"
+date: "2023-08-07"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("emmeans")
+library("dplyr") 
+library("dslabs") 
+library("ggplot2") 
+library("ggrepel") 
+library("scales")
+library("ggridges")
+library("tidyr") 
+library("stringr") 
+library("skimr")
+library("MASS") 
+library("naniar") 
+library("rpart") 
+library("simputation")
+library("car")
+library("DALEX")
+library("superheat")
+library("tibble")
+library("ggfortify")
+library("corrplot")
+library("factoextra")
+library("caret")
+library("gridExtra")
+library("patchwork")
+library("glmnet")
+library("ggpubr")
+library("ggpmisc")
+library("cluster")
+library("lfda")
+library("palmerpenguins")
+library("ggh4x")
+library("autoReg")
+library("sjPlot")
+library("sjmisc")
+library("sjlabelled")
+```
+
+```{r}
+load("stageSeparated 1.RData")
+```
+
+```{r}
+dataset_SpatMem_4 <- rbind(kde.data.bantuchild.4, kde.data.bonobo.4, kde.data.chimp.4, kde.data.mbendjelechild.4, kde.data.usadult.4, kde.data.uschild.4)
+```
+
+# Check NAs
+
+```{r}
+colSums(is.na(dataset_SpatMem_4))
+```
+
+# Str and table of studyGroup
+```{r}
+str(dataset_SpatMem_4)
+
+dataset_SpatMem_4$targetCollected <- as.numeric(dataset_SpatMem_4$targetCollected)
+dataset_SpatMem_4$straightness.index <- as.numeric(dataset_SpatMem_4$straightness.index)
+dataset_SpatMem_4$changepoints <- as.numeric(dataset_SpatMem_4$changepoints)
+dataset_SpatMem_4$trialDuration <- as.numeric(dataset_SpatMem_4$trialDuration)
+dataset_SpatMem_4$interactions <- as.numeric(dataset_SpatMem_4$interactions)
+dataset_SpatMem_4$trial_count <- as.numeric(dataset_SpatMem_4$trial_count)
+
+summary(dataset_SpatMem_4)
+
+table(dataset_SpatMem_4$studyGroup)
+```
+
+# Distribution of targetCollected/straightness.index/changepoints/trialDuration/interactions/studyGroup
+```{r}
+par(mfrow = c(3,2))
+barplot(table(dataset_SpatMem_4$targetCollected),main="Distribution of targetCollected",xlab="targetCollected",ylab="Frequency")
+hist(dataset_SpatMem_4$straightness.index, breaks=50,main="Distribution of variable straightness.index",xlab="Number of straightness.index",ylab="Frequency")
+hist(dataset_SpatMem_4$changepoints, breaks=15,main="Distribution of variable changepoints",xlab="Number of changepoints",ylab="Frequency")
+hist(dataset_SpatMem_4$trialDuration, breaks=50,main="Distribution of variable trialDuration",xlab="Number of votes for trialDuration",ylab="Frequency")
+hist(dataset_SpatMem_4$interactions, breaks=50,main="Distribution of variable interactions",xlab="Number of votes for interactions",ylab="Frequency")
+barplot(table(dataset_SpatMem_4$studyGroup),main="Distribution of studyGroup",xlab="studyGroup",ylab="Frequency")
+```
+
+# Boxplot of changepoints across each studyGroup 
+```{r}
+boxplot(changepoints~studyGroup, data = dataset_SpatMem_4, xlab="Study Group", ylab="Change Points", col = c("gold", "darkgreen"), cex.axis = 0.8)
+```
+
+# Hist facet
+```{r}
+agg <- aggregate(changepoints ~ studyGroup, dataset_SpatMem_4, function(x) {
+  c(mean = mean(x), median = median(x))
+})
+agg <- cbind(agg[1], agg[[2]])
+agg <- reshape2::melt(agg, id.vars = "studyGroup")
+names(agg)[names(agg) == 'variable'] <- 'stat'
+
+ggplot(data = dataset_SpatMem_4, aes(x = changepoints, fill=studyGroup)) + 
+  geom_histogram(binwidth = 1) + 
+  stat_theodensity(aes(y = after_stat(count))) +
+  geom_vline(data = agg, mapping = aes(xintercept = value,
+                                       color = stat)) +
+  facet_wrap(~studyGroup)
+
+ggplot(dataset_SpatMem_4, aes(x = changepoints)) +
+  geom_histogram(bins = 13) +
+  geom_vline(data = agg, mapping = aes(xintercept = value,
+                                       color = stat)) +
+  facet_wrap(~studyGroup) +
+  theme_bw()
+```
+
+# Fit a univariate linear regression - straightness.index/trialDuration ~ changepoints    
+```{r}
+fit1 <- lm(straightness.index~changepoints, data = dataset_SpatMem_4)
+summary(fit1)
+tab_model(fit1)
+
+fit2 <- lm(trialDuration~changepoints, data = dataset_SpatMem_4)
+summary(fit2)
+tab_model(fit2)
+
+tab_model(
+  fit1, fit2, 
+  dv.labels = c("straightness.index", "trialDuration"),
+  string.pred = "Coeffcient",
+  string.ci = "Conf. Int (95%)",
+  string.p = "P-Value"
+)
+```
+
+# Use t.test to compare straightness.index/trialDuration and changepoints
+```{r}
+t.test(dataset_SpatMem_4$straightness.index, dataset_SpatMem_4$changepoints)
+t.test(dataset_SpatMem_4$trialDuration, dataset_SpatMem_4$changepoints)
+```
+
+# Summary Table
+```{r}
+summary(lm(changepoints~factor(studyGroup),data=dataset_SpatMem_4))
+tab_model(lm(changepoints~factor(studyGroup),data=dataset_SpatMem_4),
+  string.pred = "Coeffcient",
+  string.ci = "95% CI",
+  string.p = "P-Value")
+
+tab_model(lm(straightness.index~factor(studyGroup),data=dataset_SpatMem_4),
+          lm(trialDuration~factor(studyGroup),data=dataset_SpatMem_4),
+  string.pred = "Coeffcient",
+  string.ci = "95% CI",
+  string.p = "P-Value")
+```
+
+# Fit the multiple linear regression - straightness.index
+```{r}
+fit2=lm(straightness.index~factor(studyGroup)*changepoints,data=dataset_SpatMem_4)
+summary(fit2)
+
+fit3=lm(trialDuration~factor(studyGroup)*changepoints,data=dataset_SpatMem_4)
+summary(fit3)
+
+tab_model(fit2,fit3,
+  string.pred = "Coeffcient",
+  string.ci = "95% CI",
+  string.p = "P-Value")
+```
+
+# Forest
+```{r}
+plot_models(
+  fit2, fit3,
+  axis.labels = c(
+    "US_Child × changepoints", "US_Adult × changepoints", "Mbendjele_Child × changepoints", "chimp × changepoints", "bonobo × changepoints", "changepoints", "US_Child", "US_Adult", "Mbendjele_Child", "chimp", "bonobo"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE, grid = TRUE
+)
+
+plot_models(
+  fit2, fit3,
+  axis.labels = c(
+    "US_Child × changepoints", "US_Adult × changepoints", "Mbendjele_Child × changepoints", "chimp × changepoints", "bonobo × changepoints", "changepoints", "US_Child", "US_Adult", "Mbendjele_Child", "chimp", "bonobo"),
+  show.values = FALSE, show.p = FALSE, p.shape = TRUE
+)
+```
+
+# Create a plot of straightness.index versus changepoints for each level of studyGroup with confidence intervals at changepoints=0, 5, 6.368, 13
+```{r}
+fib.lm <- lm(straightness.index ~ changepoints*factor(studyGroup), data = dataset_SpatMem_4)
+fib.rg <- ref_grid(fib.lm, at = list(changepoints = c(0, 5, 6.368, 13)))
+emmip(fib.rg, factor(studyGroup)~changepoints, CI=TRUE) 
+```
+
+# Create a plot of trialDuration versus changepoints for each level of studyGroup with confidence intervals at changepoints=0, 5, 6.368, 13
+```{r}
+fib.lm <- lm(trialDuration ~ changepoints*factor(studyGroup), data = dataset_SpatMem_4)
+fib.rg <- ref_grid(fib.lm, at = list(changepoints = c(0, 5, 6.368, 13)))
+emmip(fib.rg, factor(studyGroup)~changepoints, CI=TRUE) 
+```
+
+# Make a plot that shows the relationship between the category of studyGroup and changepoints
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = studyGroup, y = changepoints)) +
+geom_jitter() +
+scale_x_discrete() +
+theme(axis.text.x = element_text(angle = 90)) + 
+labs(x = "studyGroup", y = "changepoints")
+
+## categories are sorted from those with most to least average changepoints
+ggplot(dataset_SpatMem_4, aes(x = reorder(studyGroup, -changepoints, mean), y = changepoints)) + 
+geom_jitter() +
+scale_x_discrete() +
+theme(axis.text.x = element_text(angle = 90)) + 
+labs(x = "studyGroup", y = "changepoints")
+```
+
+## Take a look at targetCollected = 1
+```{r}
+z = subset(dataset_SpatMem_4, targetCollected == 1, select = logFileName:trial_count)
+ggplot(dataset_SpatMem_4, aes(x = reorder(studyGroup, -changepoints, mean), y = changepoints, color = as.factor(targetCollected))) +
+geom_jitter() +
+scale_x_discrete() +
+scale_color_brewer(palette = "Set2") + 
+geom_text_repel(data=z, aes(x = studyGroup, y = changepoints, label=participant, colour = as.factor(targetCollected)), segment.size = 0.2) +
+theme(legend.position = "bottom", axis.text.x = element_text(angle = 90)) + 
+labs(x = "studyGroup", y = "changepoints", color = "targetCollected")
+```
+
+# Showing the changepoints according to different studyGroup - straightness.index/trialDuration
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = straightness.index, y = changepoints, colour = studyGroup)) + 
+geom_line(aes(group = targetCollected), linewidth = 1) + 
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=2) +
+labs(x = "straightness.index", y = "changepoints") + 
+theme_minimal()
+```
+
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = trialDuration, y = changepoints, colour = studyGroup)) + 
+geom_line(aes(group = targetCollected), linewidth = 1) + 
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=2) +
+labs(x = "trialDuration", y = "changepoints") + 
+theme_minimal()
+```
+
+# Showing the changepoints according to different studyGroup - lm-straightness.index/trialDuration
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = straightness.index, y = changepoints, colour = studyGroup)) + 
+geom_point(size=0.5) + 
+geom_smooth(method = lm) +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=3) +
+labs(x = "straightness.index", y = "changepoints") + 
+stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")), label.y = 13, size = 3) + 
+theme_minimal()
+```
+
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = trialDuration, y = changepoints, colour = studyGroup)) + 
+geom_point(size=0.5) + 
+geom_smooth(method = lm) +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=3) +
+labs(x = "trialDuration", y = "changepoints") + 
+stat_cor(aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~")), label.y = 13, size = 3) + 
+xlim(50, 150) + 
+theme_minimal()
+```
+
+# Relationship between straightness.index/trialDuration and changepoints
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = straightness.index, y = changepoints, colour = studyGroup)) + 
+geom_point() +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ targetCollected, ncol=6) + 
+theme_minimal() + 
+theme(legend.position = "bottom") + 
+labs(x = "straightness.index", y = "changepoints")
+
+ggplot(dataset_SpatMem_4, aes(x = straightness.index, y = changepoints, colour = as.factor(targetCollected))) + 
+geom_point() +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=6) + 
+theme_minimal() + 
+theme(legend.position = "bottom") + 
+labs(x = "straightness.index", y = "changepoints", colour = "targetCollected")
+```
+
+```{r}
+ggplot(dataset_SpatMem_4, aes(x = trialDuration, y = changepoints, colour = studyGroup)) + 
+geom_point() +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ targetCollected, ncol=6) + 
+theme_minimal() + 
+theme(legend.position = "bottom") + 
+labs(x = "trialDuration", y = "changepoints")
+
+ggplot(dataset_SpatMem_4, aes(x = trialDuration, y = changepoints, colour = as.factor(targetCollected))) + 
+geom_point() +
+scale_color_brewer(palette = "Set2") +
+facet_wrap(~ studyGroup, ncol=6) + 
+theme_minimal() + 
+theme(legend.position = "bottom") + 
+labs(x = "trialDuration", y = "changepoints", colour = "targetCollected")
+```
+
+# Correlations for factor(studyGroup)+changepoints+straightness.index+trialDuration+interactions
+```{r}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_4, changepoints, straightness.index, trialDuration, interactions, trial_count, studyGroup)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1]
+  corr <- cor(temp, use = "complete.obs")
+  corrplot(corr, method = "ellipse", title = paste0("Correlation for ", i), cex.main = 0.8, tl.cex = 0.8, tl.col = 'black', mar=c(0.5, 0.5, 1, 0.5), type = "upper")
+  }
+```
+
+# Correlation values in a facet grid for changepoints and straightness.index/trialDuration group by studyGroup across targetCollected
+```{r}
+ggplot(dataset_SpatMem_4, aes(changepoints, straightness.index)) + 
+  geom_smooth(method = "loess", colour = "red", fill = "red") + 
+  geom_smooth(method = "lm", colour = "blue", fill = "blue") + 
+  ylim(0,2) +
+  geom_point(size=.5) + 
+  facet_grid(targetCollected~studyGroup, margins=TRUE)
+
+ggplot(dataset_SpatMem_4, aes(changepoints, straightness.index)) + 
+  geom_smooth(method = "lm") + 
+  ylim(0,2) +
+  geom_point(size=.5) + 
+  facet_grid(targetCollected~studyGroup, margins=TRUE)
+```
+
+# Boxplot facet
+```{r}
+ggplot(dataset_SpatMem_4, aes(x=straightness.index, y=changepoints, group=studyGroup)) + 
+  geom_boxplot(aes(fill=studyGroup)) +
+  facet_grid(targetCollected~studyGroup, margins=TRUE)
+
+ggplot(dataset_SpatMem_4, aes(x=trialDuration, y=changepoints, group=studyGroup)) + 
+  geom_boxplot(aes(fill=studyGroup)) +
+  facet_grid(targetCollected~studyGroup, margins=TRUE) +
+  theme(axis.text.x = element_text(angle =45, hjust = 1))
+```
+
+# Try PCA for targetCollected/changepoints/straightness.index/trialDuration/interactions/trial_count/studyGroup
+```{r}
+SpatMem_4 <- dplyr::select(dataset_SpatMem_4, targetCollected, changepoints, straightness.index, trialDuration, interactions, trial_count, studyGroup)
+  
+# Prepare the data
+SpatMem_4_pca <- SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")]
+# Principal component analysis
+pca <- prcomp(SpatMem_4_pca, scale. = TRUE)
+# Plot
+autoplot(pca, loadings = TRUE, loadings.label = TRUE,
+         data = SpatMem_4, colour = 'studyGroup', xlim = c(-0.15, 0.1))
+```
+
+# ???Plotting cluster 
+```{r}
+autoplot(clara(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], 3))
+autoplot(fanny(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], 3), frame = TRUE)
+autoplot(pam(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], 3), frame = TRUE, frame.type = 'norm')
+autoplot(silhouette(pam(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], 3L)))
+```
+
+# ???Plotting K-means
+```{r}
+autoplot(kmeans(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], 3), data = SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], label = TRUE, label.size = 3, frame = TRUE)
+```
+
+# Semi-supervised Local Fisher Discriminant Analysis (SELF)
+```{r}
+model <- self(SpatMem_4[,c("targetCollected","changepoints","interactions","trial_count","straightness.index","trialDuration")], SpatMem_4[, "studyGroup"], beta = 0.1, r = 3, metric="plain")
+autoplot(model, data = SpatMem_4, frame = TRUE, frame.colour = 'studyGroup')
+```
+
+# Try Lasso for targetCollected/changepoints/interactions/trial_count/studyGroup - straightness.index/trialDuration
+```{r}
+SpatMem_4 <- dplyr::select(dataset_SpatMem_4, targetCollected, changepoints, straightness.index, trialDuration, interactions, trial_count, studyGroup)
+```
+
+```{r}
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- SpatMem_4 %>% filter(studyGroup == i)
+  y_nom <- temp$straightness.index
+  x_nom <- data.matrix(temp[, c("targetCollected","changepoints","interactions","trial_count")])
+  
+  #perform k-fold cross-validation to find optimal lambda value
+  set.seed(2023)
+  cv_model <- cv.glmnet(x_nom, y_nom, alpha = 1)
+  
+  #find coefficients of best model
+  best_model <- glmnet(x_nom, y_nom, alpha = 1, lambda = cv_model$lambda.min)
+  print(coef(best_model))
+
+  best_model2 <- glmnet(x_nom, y_nom, alpha = 1, lambda = cv_model$lambda.1se)
+  print(coef(best_model2))
+}
+  
+#SpatMem_4_Bantu_Child <- SpatMem_4 %>% filter(studyGroup == "Bantu_Child")
+#SpatMem_4_Mbendjele_Child <- SpatMem_4 %>% filter(studyGroup == "Mbendjele_Child")
+#SpatMem_4_US_Adult <- SpatMem_4 %>% filter(studyGroup == "US_Adult")
+#SpatMem_4_US_Child <- SpatMem_4 %>% filter(studyGroup == "US_Child")
+#SpatMem_4_bonobo <- SpatMem_4 %>% filter(studyGroup == "bonobo")
+#SpatMem_4_chimp <- SpatMem_4 %>% filter(studyGroup == "chimp")
+```
+
+```{r}
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- SpatMem_4 %>% filter(studyGroup == i)
+  y_nom <- temp$trialDuration
+  x_nom <- data.matrix(temp[, c("targetCollected","changepoints","interactions","trial_count")])
+  
+  #perform k-fold cross-validation to find optimal lambda value
+  set.seed(2023)
+  cv_model <- cv.glmnet(x_nom, y_nom, alpha = 1)
+  
+  #find coefficients of best model
+  best_model <- glmnet(x_nom, y_nom, alpha = 1, lambda = cv_model$lambda.min)
+  print(coef(best_model))
+
+  best_model2 <- glmnet(x_nom, y_nom, alpha = 1, lambda = cv_model$lambda.1se)
+  print(coef(best_model2))
+}
+```
+
+# ???specific participant/studyGroup
+```{r}
+SpatMem_4 <- dplyr::select(dataset_SpatMem_4, participant, targetCollected, changepoints, straightness.index, trialDuration, interactions, trial_count, studyGroup)
+  
+superheat(SpatMem_4,
+          # scale the matrix columns
+          scale = TRUE,
+          # add row dendrogram
+          row.dendrogram = TRUE)
+
+set.seed(2023)
+superheat(SpatMem_4,
+          # scale the matrix columns
+          scale = TRUE,
+          # generate three column clusters
+          n.clusters.rows = 3)
+```
+
+# ???specific participant/studyGroup
+```{r}
+SpatMem_4 <- dplyr::select(dataset_SpatMem_4, participant, targetCollected, changepoints, straightness.index, trialDuration, interactions, trial_count, studyGroup)
+
+D <- SpatMem_4 %>% 
+  column_to_rownames(var = "participant") %>% 
+  dist()
+hclust_result <- hclust(D) 
+plot(hclust_result, cex = 0.1)
+```
+
+```{r}
+cluster_df <- cutree(hclust_result, k = 8) %>% 
+  tibble(participant = names(.), cluster = as.factor(.))
+
+ggplot(trips %>% inner_join(cluster_df, by = "participant"), aes(x, y, col = cluster)) + 
+  geom_jitter(size = 0.6, alpha = 0.1) + 
+  scale_color_brewer(palette = "Set2") + 
+  labs(x = "Longitude", y = "Latitude") + 
+  guides(color = guide_legend("Cluster", override.aes = list(size = 2, alpha = 1))) + 
+  theme(legend.position = "bottom")
+```
+

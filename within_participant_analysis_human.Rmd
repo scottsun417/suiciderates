@@ -1,0 +1,635 @@
+
+---
+title: "Within-Participant Analysis (child and adult)"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(broom)
+library(forecast)
+library(nlme)
+library(lavaan)
+library(factoextra)
+library(rstanarm)
+library(randomForest)
+library(corrplot)
+library(GGally)
+library(fmsb)
+library(igraph)
+library(ggplot2)
+library(reshape2)
+```
+
+## Data Loading and Preparation
+
+```{r load-data, echo=FALSE}
+data <- read.csv('spatmem_participant.csv')
+```
+
+## Overview of the Data
+
+```{r data-overview, echo=FALSE}
+parti <- c('Alex', 'Dorien', 'Fraukje', 'Frederike', 'Kanzi', 'Lobo', 'Lome', 'Teco')
+
+data <- data %>% filter(!participant %in% parti)
+
+head(data)
+summary(data)
+```
+
+### Analysis of Key Variables Across Different 'stage.true'
+
+Variables: 'changepoints', 'straightness.index', 'trialDuration', 'targetCollected', 'interactions', 'trial_count'
+
+```{r key-variables}
+data %>% 
+  group_by(participant, stage.true) %>% 
+  summarise(
+    mean_changepoints = mean(changepoints, na.rm = TRUE),
+    mean_straightness_index = mean(straightness.index, na.rm = TRUE),
+    mean_trialDuration = mean(trialDuration, na.rm = TRUE),
+    total_targetCollected = sum(targetCollected, na.rm = TRUE),
+    total_interactions = sum(interactions, na.rm = TRUE),
+    trial_count = n()
+  )
+```
+
+## Learning Progress Analytics
+
+### Participant-wise Learning Progress
+
+```{r learning-progress}
+# Plotting the learning curve for each participant across different stages
+data %>% 
+  group_by(participant, stage.true, studyGroup) %>%
+  summarise(mean_trialDuration = mean(trialDuration, na.rm = TRUE)) %>%
+  ggplot(aes(x = stage.true, y = mean_trialDuration, group = participant, color = participant)) +
+  geom_line() +
+  facet_wrap(~studyGroup) + 
+  theme(panel.spacing.x = unit(2, "mm"), legend.key.height= unit(0.4, 'cm'), 
+        legend.key.width= unit(0.4, 'cm'), legend.key.size = unit(0.1, 'cm'),
+        legend.text = element_text(size=6)) +
+  labs(title = "Learning Progress of Each Participant",
+       x = "Stage",
+       y = "Average Trial Duration")
+```
+
+Interpretation:
+
+1. If the average 'trialDuration' decreases over stages for a participant, it may indicate improved efficiency or familiarity with the task.
+2. An increase in 'targetCollected' across stages might suggest enhanced skill or learning.
+3. Variability among participants can highlight differences in learning rates or strategies.
+
+### Learning Progress Analytics Focused on 'Changepoints'
+
+1. Trend Analysis of Changepoints Over Stages: This will show how the average number of changepoints per trial varies for each participant across different stages.
+
+```{r}
+# Calculate the average number of changepoints per trial for each participant in each stage
+changepoints_trend <- data %>%
+  group_by(participant, stage.true, studyGroup) %>%
+  summarise(mean_changepoints = mean(changepoints, na.rm = TRUE))
+
+# Plotting the trend
+ggplot(changepoints_trend, aes(x = stage.true, y = mean_changepoints, group = participant, color = participant)) +
+  geom_line() +
+  facet_wrap(~studyGroup) + 
+  theme(panel.spacing.x = unit(2, "mm"), legend.key.height= unit(0.4, 'cm'), 
+        legend.key.width= unit(0.4, 'cm'), legend.key.size = unit(0.1, 'cm'),
+        legend.text = element_text(size=6)) +
+  labs(title = "Trend of Changepoints Across Stages",
+       x = "Stage",
+       y = "Average Changepoints per Trial")
+```
+
+2. Examining Changepoints Variability Among Participants: This analysis can help identify participants who show more variability in their strategy or learning process.
+
+```{r}
+# Assessing variability in changepoints among participants
+changepoints_variability <- data %>%
+  group_by(participant, studyGroup) %>%
+  summarise(sd_changepoints = sd(changepoints, na.rm = TRUE))
+
+# Plotting the variability
+ggplot(changepoints_variability, aes(x = participant, y = sd_changepoints, fill = participant)) +
+  geom_bar(stat = "identity") +
+  facet_grid(~studyGroup, scale="free", space="free_x") +
+  scale_x_discrete(guide = guide_axis(n.dodge=4)) +
+  theme(panel.spacing.x = unit(2.5, "mm"), legend.key.height= unit(0.4, 'cm'), 
+        legend.key.width= unit(0.4, 'cm'), legend.key.size = unit(0.1, 'cm'),
+        legend.text = element_text(size=6), strip.text.x = element_text(size = 8)) +
+  labs(title = "Variability of Changepoints Among Participants",
+       x = "Participant",
+       y = "Standard Deviation of Changepoints")
+```
+
+These code snippets will create visualizations that help in understanding the learning progress of each participant with a focus on changepoints. The first plot shows how the average changepoints evolve over stages, indicating learning or strategy adjustments. The second plot compares the variability of changepoints among participants, highlighting differences in learning styles or adaptability.
+
+## Statistical Analysis
+
+```{r}
+data <- data[!is.infinite(data$trialDuration), ]
+data <- data[!is.na(data$changepoints), ]
+```
+
+### Hypotheses specifically on 'changepoints' and 'trialDuration'
+
+1. Relationship Between Changepoints and Trial Duration: There is a significant correlation between the number of changepoints (straightness.index) and the duration of trials.
+
+Correlation Analysis: To understand if there's a significant relationship between 'changepoints' and 'trialDuration' ('straightness.index').
+
+```{r}
+# Correlation test between changepoints and trialDuration
+cor.test(data$changepoints, data$trialDuration)
+
+# Correlation test between changepoints and straightness.index
+cor.test(data$changepoints, data$straightness.index)
+```
+
+2. Variation Across Stages: Both the number of changepoints and trial duration vary significantly across different stages.
+
+Mixed-Effects Model for Stage-Wise Analysis: To assess if 'stage.true' significantly affects 'changepoints', 'trialDuration' and 'straightness.index'.
+
+```{r}
+# Mixed-effects model for changepoints
+model_changepoints <- lmer(changepoints ~ stage.true + (1|participant), data = data)
+summary(model_changepoints)
+
+# Mixed-effects model for trialDuration
+model_trialDuration <- lmer(trialDuration ~ stage.true + (1|participant), data = data)
+summary(model_trialDuration)
+
+# Mixed-effects model for straightness.index
+model_trialDuration <- lmer(straightness.index ~ stage.true + (1|participant), data = data)
+summary(model_trialDuration)
+```
+
+3. Participant Variability: There is significant variability in the number of changepoints and trial duration among participants and the straightness index.
+
+Participant Variability Analysis: To examine whether there's significant variability among participants in terms of 'changepoints', 'trialDuration' and 'straightness.index'.
+
+```{r}
+# ANOVA for variability in changepoints among participants
+anova_changepoints <- aov(changepoints ~ participant, data = data)
+summary(anova_changepoints)
+
+# ANOVA for variability in trialDuration among participants
+anova_trialDuration <- aov(trialDuration ~ participant, data = data)
+summary(anova_trialDuration)
+
+# ANOVA for variability in straightness.index among participants
+anova_trialDuration <- aov(straightness.index ~ participant, data = data)
+summary(anova_trialDuration)
+```
+
+Interpretation of Results:
+
+Correlation Test: A significant result will indicate a relationship between the frequency of changepoints and the duration of trials. This could suggest that as participants experience more changepoints (indicating strategy shifts or learning moments), it affects how long they take to complete trials.
+Mixed-Effects Model: Significant stage effects would imply that the progression through stages impacts either the number of changepoints, trial duration, or both. This can be an indicator of learning or adaptation to task complexity.
+Participant Variability Analysis: Significant differences among participants could indicate that individual differences play a crucial role in how participants experience changepoints and manage trial durations.
+
+### Expanded Analyses
+
+1. Impact of Confounding Variables: Additional variables (e.g., 'targetCollected', 'interactions', 'trial_count') impact 'changepoints' and 'trialDuration' and 'straightness.index', controlling for participant and stage effects.
+
+Mixed-Effects Models with Confounders: To assess the impact of various factors on 'changepoints' and 'trialDuration' and 'straightness.index', accounting for participant and stage variability.
+
+```{r}
+# Mixed-effects model including confounders for changepoints
+model_changepoints_conf <- lmer(changepoints ~ stage.true + targetCollected + interactions + trial_count + (1|participant), data = data)
+summary(model_changepoints_conf)
+
+# Mixed-effects model including confounders (straightness.index) for trialDuration
+model_trialDuration_si <- lmer(straightness.index ~ stage.true + changepoints + (1|participant), data = data)
+summary(model_trialDuration_si)
+
+# Mixed-effects model including confounders (changepoints) for trialDuration
+model_trialDuration_cp <- lmer(trialDuration ~ stage.true + changepoints + (1|participant), data = data)
+summary(model_trialDuration_cp)
+```
+
+2. Learning Progress Analysis: There is a significant improvement or change in performance (e.g., reduction in 'trialDuration', changes in 'changepoints') over time for each participant.
+
+Learning Progress Analysis: To analyze the learning curve within each participant, you can look at the trend of key metrics over time or trials.
+
+```{r}
+learning_progress_1 <- data %>%
+  group_by(participant) %>%
+  do(tidy(lm(trialDuration ~ changepoints, data = .)))
+
+learning_progress_1
+
+learning_progress_2 <- data %>%
+  group_by(participant) %>%
+  do(tidy(lm(straightness.index ~ changepoints, data = .)))
+
+learning_progress_2
+```
+
+3. Variability in Learning Progress Across Participants: The rate and pattern of learning progress vary significantly among participants.
+
+Comparing Learning Progress Across Participants: To assess whether learning progress (e.g., improvement in 'trialDuration') varies significantly among participants.
+
+```{r}
+# ANOVA to test differences in learning rates (slopes from the linear models) among participants
+learning_rate_comparison <- aov(estimate ~ participant, data = learning_progress_1)
+summary(learning_rate_comparison)
+
+# ANOVA to test differences in learning rates (slopes from the linear models) among participants
+learning_rate_comparison <- aov(estimate ~ participant, data = learning_progress_2)
+summary(learning_rate_comparison)
+```
+
+Interpretation of Results:
+
+Mixed-Effects Models with Confounders: This analysis will reveal the influence of various factors on key metrics, controlling for individual differences and stage effects. Significant coefficients for confounding variables suggest that these factors play a role in the observed performance metrics.
+Learning Progress Analysis: The linear regression results for each participant will indicate whether there is a significant trend in performance improvement. For example, a negative slope in 'trialDuration' over trials would suggest learning or improvement.
+Comparing Learning Progress Across Participants: The ANOVA on learning rates will show if there's significant variability in how participants improve over time. This could indicate differences in learning aptitude or strategy among participants.
+
+4. Advanced Modeling: Growth Curve Analysis
+
+For a more sophisticated approach to learning progress, consider growth curve analysis, which can model individual trajectories over time.
+
+Hypothesis: Participants follow distinct learning trajectories that can be modeled with growth curves.
+
+```{r, echo=FALSE}
+# Growth curve analysis
+growth_curve_model <- lme(trialDuration ~ poly(changepoints, 2), random = ~ 1 | participant, data = na.omit(data[, -which(names(data) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))]))
+summary(growth_curve_model)
+
+# Growth curve analysis
+growth_curve_model <- lme(straightness.index ~ poly(changepoints, 2), random = ~ 1 | participant, data = na.omit(data[, -which(names(data) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))]))
+summary(growth_curve_model)
+```
+
+Interpretation of Extended Analyses:
+
+Growth Curve Analysis: This will offer insights into individual learning trajectories and how they evolve over time.
+
+5. Interaction Effects in Mixed-Models
+
+Investigate whether the effect of stages or other variables on 'trialDuration' changes depending on other variables, like 'changepoints' or 'straightness.index'.
+
+Hypothesis: The relationship between stages and performance metrics (e.g., 'changepoints', 'trialDuration') is moderated by other variables.
+
+```{r}
+# Mixed-effects model with interaction terms
+model_interaction <- lmer(trialDuration ~ stage.true * straightness.index + (1|participant), data = data)
+summary(model_interaction)
+
+# Mixed-effects model with interaction terms
+model_interaction <- lmer(trialDuration ~ stage.true * changepoints + (1|participant), data = data)
+summary(model_interaction)
+```
+
+6. Time-Series Analysis for Each Participant (seems not time-series for each stage? Assuming sequential trials) (No suitable ARIMA model found)
+
+If data is time-ordered (e.g., sequential trials), we can use time-series analysis to track changes over time, which is particularly useful for detecting learning trends and patterns.
+
+Hypothesis: Participants exhibit identifiable time-related trends in their performance metrics.
+
+```{r}
+# # Evaluate model fit and residuals for a specific participant
+# evaluate_model <- function(participant_data) {
+#   ts_model <- auto.arima(participant_data$trialDuration)
+#   checkresiduals(ts_model)
+#   return(ts_model)
+# }
+# 
+# # Plotting function for forecasts
+# plot_forecasts <- function(participant_data) {
+#   ts_model <- auto.arima(participant_data$trialDuration)
+#   forecasted_values <- forecast(ts_model, h = 10)
+#   plot(forecasted_values)
+# }
+# 
+# # Aggregating forecast information
+# aggregate_forecast_info <- function(participant_data) {
+#   ts_model <- auto.arima(participant_data$trialDuration)
+#   forecasted_values <- forecast(ts_model, h = 10)
+#   return(data.frame(mean_forecast = mean(forecasted_values$mean)))
+# }
+# 
+# # Applying the evaluation function for each participant
+# model_evaluation_results <- data %>%
+#   group_by(participant) %>%
+#   do(model_evaluation = evaluate_model(.))
+# 
+# # Applying the plotting function for each participant
+# data %>%
+#   group_by(participant) %>%
+#   do(plot_forecasts(.))
+# 
+# # Applying the aggregation function for each participant
+# aggregate_forecast_results <- data %>%
+#   group_by(participant) %>%
+#   summarise(mean_forecast = aggregate_forecast_info(.))
+```
+
+Interpretation of Extended Analyses:
+
+Interaction Effects: Understanding how the influence of one variable on performance metrics changes in the context of another variable.
+Time-Series Analysis: Identifying trends and making short-term forecasts about participants' future performance.
+
+7. Non-Parametric Tests for Differences
+
+If the data doesn't meet the assumptions for parametric tests, consider non-parametric tests to compare metrics across different groups (like stages or participant groups).
+
+Hypothesis: There are significant differences in performance metrics across different groups.
+
+```{r}
+# Kruskal-Wallis test for differences in trialDuration across stages
+kruskal.test(trialDuration ~ stage.true, data = data)
+
+# Kruskal-Wallis test for differences in changepoints across stages
+kruskal.test(changepoints ~ stage.true, data = data)
+
+# Kruskal-Wallis test for differences in straightness.index across stages
+kruskal.test(straightness.index ~ stage.true, data = data)
+```
+
+Interpretation of Alternative Analyses:
+
+Non-Parametric Tests: Use these tests to identify significant differences in performance metrics across groups when data doesn't meet parametric assumptions.
+
+8. Bayesian Hierarchical Modeling (too many computational cost!!! will be discussed separately)
+
+Bayesian hierarchical models are powerful in handling complex data structures, allowing for the incorporation of participant and stage-level variations.
+
+Hypothesis: Performance metrics (like 'changepoints', 'trialDuration') are influenced by both participant-level and stage-level factors.
+
+```{r}
+# # Bayesian hierarchical model for trialDuration
+# bayesian_model_td <- stan_glmer(trialDuration ~ stage.true + (1|participant), data = data, family = gaussian)
+# summary(bayesian_model_td)
+# 
+# # Bayesian hierarchical model for changepoints
+# bayesian_model_cp <- stan_glmer(changepoints ~ stage.true + (1|participant), data = data, family = poisson)
+# summary(bayesian_model_cp)
+# 
+# # Bayesian hierarchical model for straightness.index
+# bayesian_model_cp <- stan_glmer(straightness.index ~ stage.true + (1|participant), data = data, family = poisson)
+# summary(bayesian_model_cp)
+# 
+# # Bayesian hierarchical model for trialDuration with changepoints
+# bayesian_model_td <- stan_glmer(trialDuration ~ changepoints + stage.true + (1|participant), data = data, family = gaussian)
+# summary(bayesian_model_td)
+# 
+# # Bayesian hierarchical model for changepoints with straightness.index
+# bayesian_model_cp <- stan_glmer(trialDuration ~ straightness.index + stage.true + (1|participant), data = data, family = poisson)
+# summary(bayesian_model_cp)
+```
+
+9. Machine Learning: Random Forests
+
+Random Forest is a versatile machine learning method that can handle a large number of input variables and model complex non-linear relationships.
+
+Hypothesis: A random forest model can accurately predict performance metrics based on a range of input variables.
+
+```{r}
+# Random Forest model for predicting trialDuration
+rf_model_td <- randomForest(trialDuration ~ ., data = na.omit(data[, -which(names(data) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))]))
+rf_model_td
+
+# Extracting feature importance
+importance_matrix <- importance(rf_model_td)
+print(importance_matrix)
+
+# Plotting feature importance
+varImpPlot(rf_model_td)
+
+# Random Forest model for predicting changepoints
+rf_model_cp <- randomForest(changepoints ~ ., data = na.omit(data[, -which(names(data) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))]))
+rf_model_cp
+
+# Extracting feature importance
+importance_matrix <- importance(rf_model_cp)
+print(importance_matrix)
+
+# Plotting feature importance
+varImpPlot(rf_model_cp)
+
+# Random Forest model for predicting straightness.index
+rf_model_si <- randomForest(straightness.index ~ ., data = na.omit(data[, -which(names(data) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))]))
+rf_model_si
+
+# Extracting feature importance
+importance_matrix <- importance(rf_model_si)
+print(importance_matrix)
+
+# Plotting feature importance
+varImpPlot(rf_model_si)
+```
+
+Interpretation of Advanced Analyses:
+
+Bayesian Hierarchical Modeling: Offers a probabilistic interpretation of data, accounting for different levels of variation.
+Random Forests: Useful for capturing complex, non-linear relationships and interactions between variables.
+
+## Visualization
+
+1. Scatter Plots with Fitted Lines
+
+These plots are excellent for visualizing relationships between two continuous variables, such as 'changepoints' and 'trialDuration'.
+
+```{r}
+library(ggplot2)
+
+ggplot(data, aes(x = changepoints, y = trialDuration)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue") +
+  theme_minimal() +
+  labs(title = "Relationship between Changepoints and Trial Duration",
+       x = "Changepoints",
+       y = "Trial Duration")
+```
+
+2. Boxplots for Comparing Groups
+
+Boxplots are useful for comparing the distribution of a continuous variable across different groups (e.g., different 'stage.true').
+
+```{r}
+ggplot(data, aes(x = stage.true, y = changepoints)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Change Points Across Different Stages",
+       x = "Stage",
+       y = "Change Points")
+```
+
+3. Heatmaps for Correlation Analysis
+
+Heatmaps can visually represent the correlation between multiple variables.
+
+```{r}
+# Calculate correlation matrix
+cor_matrix <- cor(data[, c("changepoints", "trialDuration", "straightness.index", "targetCollected", "interactions")], use = "complete.obs")
+
+# Correlation heatmap
+corrplot(cor_matrix, method = "color")
+```
+
+4. Time Series Plots (If Applicable)
+
+If your data is time-ordered, plotting key variables over time can show trends and patterns.
+
+```{r}
+# Assuming 'time' is a variable representing time-ordering
+ggplot(data, aes(x = stage.true, y = changepoints)) +
+  geom_line(aes(group = participant, color = participant)) +
+  theme_minimal() +
+  labs(title = "Change Points Over Time for Each Participant",
+       x = "Time",
+       y = "Change Points")
+```
+
+5. Histograms for Distribution Analysis
+
+Histograms are great for understanding the distribution of a single variable, such as 'changepoints'.
+
+```{r}
+ggplot(data, aes(x = changepoints)) +
+  geom_histogram(bins = 30, fill = "blue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of Changepoints",
+       x = "Changepoints",
+       y = "Frequency")
+```
+
+6. Cluster Analysis Visualization
+
+If you've performed cluster analysis, visualizing these clusters can be insightful.
+
+```{r}
+ggplot(data, aes(x = changepoints, y = trialDuration, color = factor(participant))) +
+  geom_point(alpha = 0.6) +
+  theme_minimal() +
+  labs(title = "Clusters based on Changepoints and Trial Duration",
+       x = "Changepoints",
+       y = "Trial Duration")
+```
+
+7. Faceted Plots for Participant-Wise Analysis
+
+Faceted plots allow you to compare trends or patterns across different participants or stages.
+
+```{r}
+ggplot(data, aes(x = changepoints, y = trialDuration)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~ participant) +
+  theme_minimal() +
+  labs(title = "Changepoints vs. Trial Duration by Participant",
+       x = "Changepoints",
+       y = "Trial Duration")
+```
+
+8. Violin Plots
+
+Violin plots are similar to box plots but provide a deeper understanding of the distribution density.
+
+```{r}
+ggplot(data, aes(x = stage.true, y = changepoints)) +
+  geom_violin(trim = FALSE) +
+  theme_minimal() +
+  labs(title = "Distribution of Change Points Across Stages",
+       x = "Stage",
+       y = "Change Points")
+```
+
+9. Interaction Plots
+
+These plots are useful to visualize the interaction effects identified in your statistical models.
+
+```{r}
+# Assuming interaction between 'stage.true' and 'changepoints'
+ggplot(data, aes(x = stage.true, y = straightness.index, color = changepoints)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  labs(title = "Interaction Effect of Stage and Change Points on Straightness Index",
+       x = "Stage",
+       y = "Straightness Index")
+
+# Assuming interaction between 'stage.true' and 'changepoints'
+ggplot(data, aes(x = stage.true, y = trialDuration, color = changepoints)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_minimal() +
+  labs(title = "Interaction Effect of Stage and Change Points on Trial Duration",
+       x = "Stage",
+       y = "Trial Duration")
+```
+
+10. Pair Plots
+
+Pair plots (or scatterplot matrices) are great for visualizing pairwise relationships between multiple variables.
+
+```{r}
+# Pair plot for selected variables
+ggpairs(data[, c("changepoints", "trialDuration", "straightness.index", "targetCollected")])
+```
+
+11. Radar (Spider) Charts
+
+Radar charts are useful for displaying multivariate data in the form of a two-dimensional chart, particularly effective for showing a profile or performance across different variables.
+
+```{r}
+# Preparing data for radar chart
+data_radar <- data[, c("changepoints", "trialDuration", "straightness.index", "targetCollected")]
+radar_data <- data.frame(rbind(colMeans(data_radar, na.rm = TRUE), rep(0, ncol(data_radar)), rep(100, ncol(data_radar))))
+
+# Creating radar chart
+radarchart(radar_data, axistype = 1, 
+           pcol = c(rgb(0.2,0.5,0.5,0.9), rgb(0.8,0.2,0.5,0.9)),
+           pfcol = c(rgb(0.2,0.5,0.5,0.5), rgb(0.8,0.2,0.5,0.5)),
+           plwd = c(4, 4))
+```
+
+12. Density Plots
+
+Density plots are similar to histograms but provide a continuous view of data distribution, which is useful for understanding the distribution of a single continuous variable.
+
+```{r}
+ggplot(data, aes(x = changepoints)) +
+  geom_density(fill = "blue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Density Plot of Changepoints",
+       x = "Changepoints",
+       y = "Density")
+```
+
+13. Network Graphs
+
+If your data includes relationships or interactions among participants or variables, network graphs can visualize these connections.
+
+```{r}
+# Sample data preparation for network graph
+network_data <- data.frame(from = sample(data$participant, 20), to = sample(data$participant, 20))
+
+# Create a graph from data frame
+g <- graph_from_data_frame(network_data)
+
+# Plot the graph
+plot(g)
+```
+
+14. Bubble Charts
+
+Bubble charts can be used to represent three dimensions of data. The position of the bubble represents two dimensions, and the size of the bubble represents the third dimension.
+
+```{r}
+ggplot(data, aes(x = changepoints, y = trialDuration, size = straightness.index)) +
+  geom_point(alpha = 0.1) +
+  theme_minimal() +
+  labs(title = "Bubble Chart of Changepoints, Trial Duration, and Straightness Index",
+       x = "Changepoints",
+       y = "Trial Duration")
+```
+

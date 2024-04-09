@@ -1,0 +1,107 @@
+---
+title: "SEM_spatmem"
+author: "Zhiyi Sun"
+date: "2023-12-30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lavaan)
+library(dplyr)
+```
+
+```{r}
+data <- read.csv('spatmem_participant.csv')
+
+parti <- c('Alex', 'Dorien', 'Fraukje', 'Frederike', 'Kanzi', 'Lobo', 'Lome', 'Teco')
+
+data_cb <- data %>% filter(participant %in% parti)
+data_human <- data %>% filter(!participant %in% parti)
+
+data_cb <- data_cb[, -which(names(data_cb) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))] %>% filter(complete.cases(.)) 
+data_human <- data_human[, -which(names(data_human) %in% c("path", "hint.state", "start.position", "start.orientation", "start.treeSight"))] %>% filter(complete.cases(.)) 
+```
+
+9. Structural Equation Modeling (SEM) (cannot be used to human group)
+
+SEM can be used to analyze complex relationships between observed and latent variables, which is useful if you hypothesize a certain structure or causal relationship in your data.
+
+Hypothesis: There is a structured relationship between variables that influence participant performance.
+
+```{r}
+stages <- c('1A', '1B', '1C', '2', '2B', '2A', '3A', '3B', '3C', '4', '4N')
+
+# SEM model
+sem_model <- '
+  latent_variable =~ straightness.index + trialDuration
+  latent_variable ~ changepoints
+'
+# Create a combined group identifier
+# data_cb$combinedGroup <- interaction(as.factor(data_cb$studyGroup), as.factor(data_cb$stage.true))
+
+for (i in stages) {
+  temp <- subset(data_cb, stage.true == i)
+  fit <- sem(sem_model, data = data_cb, group = "studyGroup")
+  print(summary(fit))
+}
+
+# # SEM model
+# sem_model <- '
+#   latent_variable =~ straightness.index + trialDuration
+#   latent_variable ~ changepoints
+# '
+# # Create a combined group identifier
+# data_human$combinedGroup <- interaction(as.factor(data_human$studyGroup), as.factor(data_human$stage.true))
+# 
+# for (i in stages) {
+#   temp <- subset(data_human, stage.true == i)
+#   fit <- sem(sem_model, data = data_human, group = "studyGroup")
+#   print(summary(fit))
+# }
+```
+
+15. Structural Equation Modeling (SEM) with confounders (cannot be used to human group)
+
+SEM is a comprehensive statistical technique that allows for the analysis of complex relationships between observed and latent variables.
+
+Hypothesis: There are underlying latent variables that explain the relationships between observed performance metrics.
+
+```{r}
+# SEM model
+sem_model <- '
+  latent_variable_1 =~ straightness.index + trialDuration
+  latent_variable_2 =~ trial_count + interactions
+  latent_variable_1 ~ latent_variable_2 + changepoints
+'
+# Create a combined group identifier
+# data_cb$combinedGroup <- interaction(as.factor(data_cb$studyGroup), as.factor(data_cb$stage.true))
+ 
+for (i in stages) {
+  temp <- subset(data_cb, stage.true == i)
+  fit <- sem(sem_model, data = data_cb, group = "studyGroup")
+  print(summary(fit))
+}
+
+# # SEM model
+# sem_model <- '
+#  latent_variable_1 =~ straightness.index + trialDuration
+#  latent_variable_2 =~ trial_count + interactions
+#  latent_variable_1 ~ latent_variable_2 + changepoints
+# '
+# # Create a combined group identifier
+# data_human$combinedGroup <- interaction(as.factor(data_human$studyGroup), as.factor(data_human$stage.true))
+#  
+# for (i in stages) {
+#   temp <- subset(data_human, stage.true == i)
+#   fit <- sem(sem_model, data = data_human, group = "studyGroup")
+#   print(summary(fit))
+# }
+```
+
+Interpretation of Further Analyses:
+
+9. SEM: Reveals complex causal relationships and the structure of interactions between variables, offering a comprehensive view of the factors influencing participant performance.
+15. SEM: Provides a framework to understand the causal relationships and latent structures in the data.

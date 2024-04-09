@@ -1,0 +1,178 @@
+---
+title: "spatmem_analysis_corr"
+author: "Zhiyi Sun"
+date: "2024-01-19"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr) 
+library(gtsummary)
+library(corrplot)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+load("stageSeparated 1.RData")
+```
+
+```{r, echo=FALSE}
+dataset_SpatMem_1a <- rbind(kde.data.bantuchild.1a, kde.data.bonobo.1a, kde.data.chimp.1a, kde.data.mbendjelechild.1a, kde.data.usadult.1a, kde.data.uschild.1a)
+dataset_SpatMem_1b <- rbind(kde.data.bantuchild.1b, kde.data.bonobo.1b, kde.data.chimp.1b, kde.data.mbendjelechild.1b, kde.data.usadult.1b, kde.data.uschild.1b)
+dataset_SpatMem_1c <- rbind(kde.data.bantuchild.1c, kde.data.bonobo.1c, kde.data.chimp.1c, kde.data.mbendjelechild.1c, kde.data.usadult.1c, kde.data.uschild.1c)
+dataset_SpatMem_1 <- rbind(dataset_SpatMem_1a, dataset_SpatMem_1b, dataset_SpatMem_1c)
+dataset_SpatMem_2 <- rbind(kde.data.bantuchild.2, kde.data.bonobo.2, kde.data.chimp.2, kde.data.mbendjelechild.2, kde.data.usadult.2, kde.data.uschild.2)
+dataset_SpatMem_3 <- rbind(kde.data.bantuchild.3, kde.data.bonobo.3, kde.data.chimp.3, kde.data.mbendjelechild.3, kde.data.usadult.3, kde.data.uschild.3)
+dataset_SpatMem_4 <- rbind(kde.data.bantuchild.4, kde.data.bonobo.4, kde.data.chimp.4, kde.data.mbendjelechild.4, kde.data.usadult.4, kde.data.uschild.4)
+```
+
+# Stage 1 (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_1, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+The study of correlation matrices across species reveals that changepoints (CP) have a moderate to strong impact on trial duration (TD) and path straightness (SI). In human groups, US_Child show a moderate positive correlation between CP and TD (r = 0.70), suggesting more complex navigation leads to longer trials, while Bantu_Child and US_Adult exhibit a weaker positive correlation, and Mbendjele_Child show an even milder positive correlation (r = 0.57), indicating a decreasing impact of CP on trial length with age. Non-human primates exhibit similar patterns; bonobos show a moderate positive correlation between CP and TD (r = 0.59) coupled with a slight negative correlation with SI (r = -0.18), suggesting that more changepoints significantly detract from path directness while extending trial time. Chimps have the same moderate positive correlation between CP and TD (r = 0.59), and also a less pronounced negative correlation with SI (r = -0.20), indicating that while changepoints affect path directness, the effect is as severe as in bonobos. These patterns underscore the varied influences of navigational decisions on movement efficiency and social interaction across different groups, reflecting diverse evolutionary adaptations and developmental stages. Bantu_Child appear to have a unique pattern where navigational changes (CP) are positively related to path directness (the only one group) and less directly related to interactions (IA), a trait not as evident in other human and primate correlations. These differences point to species-specific navigational strategies and social behaviors that are reflected in the way each group interacts with their environment and within their social structures.
+
+# Stage 1a (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_1a, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+Across the study groups, changepoints (CP) show varying degrees of correlation with trial duration (TD) and straightness index (SI), highlighting differences in navigational strategies. Bantu_Children demonstrate a moderate positive correlation between CP and TD (r = 0.56) and a slight positive correlation with SI (r = 0.16), suggesting that increased navigational changes lead to longer, more direct trials. Mbendjele_Children show the least positive correlation of CP with interactions (IA) (r = 0.18), while still indicating that more changepoints might enhance social engagement. US_Adults and US_Child exhibit a moderate positive correlation between CP and TD and a negative correlation with SI, suggesting that more changepoints correlate with both longer and less direct trials. In contrast, bonobos show a very strong positive correlation between CP and TD (r = 0.96), the highest among all groups, indicating a significant impact of changepoints on trial duration, and a strong negative correlation with SI (r = -0.85), suggesting that navigational changes greatly reduce path directness. Chimps also exhibit a strong positive correlation between CP and TD (r = 0.82), indicating a robust link between navigational changes and trials duration, and with a moderate negative correlation with SI (r = -0.50), implying that while changepoints affect directness, the impact is less drastic than in bonobos. This comparative analysis reveals that in human groups, more changepoints tend to lead to longer and somewhat less direct trials, with a significant social component, especially in adults, while in non-human primates, changepoints have a pronounced effect on both the duration and directness of trials, with a particularly strong social dimension in chimps.
+
+# Stage 1b (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_1b, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+Changepoints (CP) correlate differently with trial duration (TD) and straightness index (SI) across species, with Bantu_Children showing a moderate positive correlation between CP and TD (r = 0.37) and a positive correlation with SI (r = 0.29), indicating more changepoints lead to longer and more direct trials. Mbendjele_Children have no significant correlations for CP, except TD (r = 0.49), indicating a single relationship for CP in this group. US_Adults have no significant correlations for CP, while US_Children exhibit a moderate negative correlation with SI (r = -0.40), pointing to more changepoints making paths less direct, and a moderate positive correlation with TD (r = 0.44), suggesting that more changepoints may marginally lengthen trials. In contrast, bonobos show a strong positive correlation between CP and TD (r = 0.62) and a moderate negative with SI (r = -0.57), suggesting more changepoints significantly impact trial length and path directness. Chimps display the most substantial correlation between CP and interactions (IA) (r = 0.37), indicating a pronounced link between navigational changes and social behavior, with a less pronounced effect on path directness (r = -0.18). These insights reveal that CP's role varies, with human children experiencing more pronounced effects on path directness and non-human primates showing stronger links between CP and social interaction, particularly in chimps. The data indicates that navigational complexity, as measured by CP, has broader implications for trial duration and social dynamics in non-human primates compared to humans.
+
+# Stage 1c (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_1c, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+In the correlation matrices, changepoints (CP) show varied relationships with trial duration (TD) and straightness index (SI) across groups, suggesting different navigational and social dynamics. Bantu_Children display a moderate positive correlation between CP and TD (r = 0.64) and a negative correlation with SI (r = 0.15), indicating more changepoints relate to longer and more straight trials. US_Adults show a moderate positive correlation between CP and TD (r = 0.67) and a strong negative correlation with SI (r = -0.64), and similarly US_Children have a strong negative correlation between CP and SI (r = -0.61) and the same moderate positive correlation with TD (r = 0.67). Bonobos present a moderate positive correlation between CP and IA (r = 0.36), suggesting more changepoints are associated with increased social interactions, and a positive correlation with TD (r = 0.27). Chimps have a moderate positive correlation between CP and TD (r = 0.36), indicating a significant link between changepoints and trials duration, with a less pronounced impact on path directness (r = -0.23). These patterns reveal that CP is consistently associated with trial duration across species, with a more substantial impact on path directness in humans compared to non-human primates, and a notable correlation with social interactions in both bonobos and chimps.
+
+# Stage 2 (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_2, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+The correlation matrices depict the relationships between changepoints (CP), straightness index (SI), trial duration (TD), and interactions (IA) across different study groups. In Bantu_Children, a lack of significant correlation for CP and SI is observed, while CP shows a mild positive correlation with TD (r = 0.55) and a slight negative correlation with IA (r = -0.28), suggesting that more changepoints might slightly extend trials but could be related to fewer interactions. Mbendjele_Children have no significant correlations for CP, except TD (r = 0.49), indicating a single relationship for CP in this group. In US_Adults, CP correlates weakly with SI (r = -0.25) and more strongly with TD (r = 0.32), implying that more changepoints may marginally lengthen trials and are associated with slightly less winding paths. US_Children exhibit a strong negative correlation between CP and SI (r = -0.65), pointing to more changepoints correlating with less directness in paths, and a strong positive correlation between CP and TD (r = 0.69), indicating that more changepoints significantly extend trial durations. The bonobo group shows a moderate positive correlation between CP and TD (r = 0.44) and a strong negative correlation with SI (r = -0.58), meaning that more changepoints are associated with longer, less direct trials. Chimps also exhibit a moderate positive correlation between CP and TD (r = 0.53), suggesting longer trials with more changepoints, whereas an insignificantly negative correlation with SI (r = -0.06), although this effect is not as pronounced as in bonobos. These patterns indicate that in both human and non-human primate groups, CP is variably related to the efficiency and duration of navigation, with non-human primates generally exhibiting stronger correlations between changepoints and the measured behaviors, particularly with the directness of their travel paths.
+
+# Stage 3 (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_3, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+The correlation matrices provide insight into the different behaviors between changepoints (CP), straightness index (SI), trial duration (TD), and interactions (IA) across several study groups. Bantu_Children exhibit a moderate positive correlation between CP and TD (r = 0.64), indicating that more changepoints correlate with longer trials. There's also a negative correlation between CP and SI (r = -0.29), suggesting that increased changepoints reduce path straightness. Mbendjele_Child show the similar pattern for TD and SI. US_Adults have a mild positive correlation between CP and TD (r = 0.36), suggesting slightly longer trials with more changepoints, and a moderate negative correlation between CP and SI (r = -0.29), indicating reduce path directness with change points increasing. There is a much smaller positive correlation between CP and IA (r = 0.09), indicating that increased changepoints are somewhat associated with more social interactions in this group. Like US_Adults, US_Children demonstrate a moderate positive correlation between CP and TD (r = 0.61) and a moderate negative correlation between CP and SI (r = -0.48), pointing to longer, less direct trials with more changepoints. In non-human primates, bonobos show a strong positive correlation between CP and TD (r = 0.80), indicating that changepoints significantly extend the duration of trials, and a strong negative correlation between CP and SI (r = -0.52), suggesting that more changepoints lead to much less direct paths. Chimps also exhibit a moderate positive correlation between CP and TD (r = 0.48), and like bonobos, there's a slight negative correlation between CP and SI (r = -0.22), indicating that while changepoints affect path directness, the effect is not as strong as in bonobos. However, bonobos show a strong positive correlation between CP and IA (r = 0.65), the strongest correlation across all groups, suggesting that in bonobos, navigational changes are closely linked to social interactions. These matrices reflect that CP impacts the length and directness of navigation differently across the groups, with humans showing variability in the strength of these correlations and non-human primates displaying a more consistent pattern where more changepoints lead to longer and less direct trials, with a significant link to social interactions in bonobos.
+
+# Stage 4 (cross out insignificant coefficient)
+
+```{r, echo=FALSE}
+cor_dataset_SpatMem <- dplyr::select(dataset_SpatMem_4, changepoints, straightness.index, trialDuration, interactions, studyGroup) %>% rename(CP = changepoints, SI = straightness.index, TD = trialDuration, IA = interactions)
+
+par(mfrow=c(2,3))
+for (i in c("Bantu_Child", "Mbendjele_Child", "US_Adult", "US_Child", "bonobo", "chimp")) {
+  temp <- na.omit(subset(cor_dataset_SpatMem, studyGroup == i)[,1:ncol(cor_dataset_SpatMem)-1])
+  
+  ## Pearson correlations
+  cormat <- cor(temp)
+  pres <- cor.mtest(temp, conf.level = .95)
+  
+  ## cross out insignificant coefficient
+  corrplot.mixed(cormat, lower.col = "black", number.cex = 1,p.mat = pres$p, sig.level = .05)
+  mtext(i, at=2.5, line=3.2, cex=0.7)
+  }
+```
+
+Changepoints (CP) across species exhibit diverse correlations with trial duration (TD) and straightness index (SI): Bantu_Children have a mild positive correlation with TD (r = 0.39) and a slight negative with SI (r = -0.39), suggesting more directional changes slightly extend trials and reduce path directness.  In contrast, the Mbendjele_Child group does not exhibit any significant correlations involving CP. US_Adults show a small positive correlation between CP and TD (r = 0.31), indicating that more change points could mean longer trials, and a negative correlation between CP and SI (r = -0.27), suggesting that there are fewer direct paths with more change points. The US_Child group has a very mild positive correlation between CP and TD (r = 0.28), a less pronounced relationship compared to adults, and a negative correlation between CP and SI (r = -0.11), pointing to less direct paths with more change points. Bonobos demonstrate a moderate positive correlation between CP and TD (r = 0.50) but a strong negative correlation with SI (r = -0.83), highlighting that increased changepoints significantly affect their path directness and lengthen trials. Chimps also show a moderate positive correlation between CP and TD (r = 0.29), suggesting a robust link between navigational changes and trials duration, but a weaker negative correlation with SI (r = -0.31), indicating a lesser impact of changepoints on path directness. These patterns suggest that CP influences the length and directness of trials differently across species, with non-human primates exhibiting stronger ties between navigation changes and social behaviors than humans.
+
